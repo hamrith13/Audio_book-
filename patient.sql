@@ -2,14 +2,13 @@
 
 USE hospital_db;
 
--- Create patients table
 CREATE TABLE patients (
     patient_id VARCHAR(10) PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
     dob DATE NOT NULL
 );
 
--- Create documents table
+
 CREATE TABLE documents (
     document_id INT AUTO_INCREMENT PRIMARY KEY,
     patient_id VARCHAR(10),
