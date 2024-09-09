@@ -12,215 +12,211 @@ from google.auth.transport.requests import Request
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
-# Global variables to store Entry widgets
-entry_username = None
-entry_dob = None
-login_entry_username = None
-login_entry_dob = None
-entry_file_path = None
-entry_upload_date = None
 
-# Database connection
-def create_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",  # Replace with your MySQL username
-        password="Hamrith@13",  # Replace with your MySQL password
-        database="hospital_db"
-    )
+class PatientApp: 
+    def __init__(self,root):
+        self.root = root
+        self.root.title("Patient Registration System")
 
-# Patient management
-def insert_patient(username, dob, patient_id):
-    conn = create_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO patients (patient_id, username, dob) VALUES (%s, %s, %s)",
-        (patient_id, username, dob)
-    )
-    conn.commit()
-    conn.close()
+       
+        self.entry_username = None
+        self.entry_dob = None
+        self.login_entry_username = None
+        self.login_entry_dob = None
+        self.entry_file_path = None
+        self.entry_upload_date = None
 
-def get_patient(username, dob):
-    conn = create_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT patient_id FROM patients WHERE username = %s AND dob = %s",
-        (username, dob)
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
+        
+        self.logged_in_username = None
+        self.logged_in_dob = None
 
-# Document management
-def insert_document(patient_id, document_name, file_path, upload_date):
-    conn = create_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO documents (patient_id, document_name, file_path, upload_date) VALUES (%s, %s, %s, %s)",
-        (patient_id, document_name, file_path, upload_date)
-    )
-    conn.commit()
-    conn.close()
+        self.show_registration_form()
 
-# Google Drive upload
-def get_credentials():
-    creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+
+    def show_registration_form(self):
+        self.clear_widgets()
+
+        tk.Label(self.root, text="Username:").pack(pady=5)
+        self.entry_username = tk.Entry(self.root)
+        self.entry_username.pack(pady=5)
+
+        tk.Label(self.root, text="Date of Birth (YYYY-MM-DD):").pack(pady=5)
+        self.entry_dob = tk.Entry(self.root)
+        self.entry_dob.pack(pady=5)
+
+        tk.Button(self.root, text="Register", command=self.register_user).pack(pady=20)
+        tk.Button(self.root, text="Go to Login", command=self.show_login_form).pack()
+
+    def register_user(self):
+        username = self.entry_username.get()
+        dob = self.entry_dob.get()
+
+        if not username or not dob:
+            messagebox.showerror("Input Error", "Please enter both Username and Date of Birth.")
+            return
+
+        patient_id = self.generate_patient_id(username, dob)
+
+        if self.get_patient(username, dob):
+            messagebox.showerror("Registration Error", "User already registered.")
+            return
+
+        self.insert_patient(username, dob, patient_id)
+        messagebox.showinfo("Registration Success", f"Registration successful!\nYour Patient ID: {patient_id}")
+        self.clear_registration_form()
+
+    # UI: Login form
+    def show_login_form(self):
+        self.clear_widgets()
+
+        tk.Label(self.root, text="Username:").pack(pady=5)
+        self.login_entry_username = tk.Entry(self.root)
+        self.login_entry_username.pack(pady=5)
+
+        tk.Label(self.root, text="Date of Birth (YYYY-MM-DD):").pack(pady=5)
+        self.login_entry_dob = tk.Entry(self.root)
+        self.login_entry_dob.pack(pady=5)
+
+        tk.Button(self.root, text="Login", command=self.login_user).pack(pady=20)
+        tk.Button(self.root, text="Go to Registration", command=self.show_registration_form).pack()
+
+    def login_user(self):
+        username = self.login_entry_username.get()
+        dob = self.login_entry_dob.get()
+
+        patient_id = self.get_patient(username, dob)
+
+        if patient_id:
+            self.logged_in_username = username  # Store the logged-in user's data
+            self.logged_in_dob = dob
+            messagebox.showinfo("Login Success", f"Welcome back, {username}!\nYour Patient ID: {patient_id}")
+            self.show_file_upload_form()
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-    return creds
+            messagebox.showerror("Login Error", "Invalid Username or Date of Birth.")
 
-def upload_to_drive(file_path, upload_date):
-    creds = get_credentials()
-    service = build('drive', 'v3', credentials=creds)
+    # UI: File upload form
+    def show_file_upload_form(self):
+        self.clear_widgets()
 
-    file_metadata = {
-        'name': os.path.basename(file_path),
-        'description': f'Uploaded on {upload_date}'
-    }
-    media = MediaFileUpload(file_path)
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    return file.get('id')
+        tk.Label(self.root, text="File Upload:").pack(pady=20)
 
-# Patient ID generation
-def generate_patient_id(username, dob):
-    combined = f"{username}_{dob}"
-    patient_id = hashlib.sha256(combined.encode()).hexdigest()[:10]
-    return patient_id
+        tk.Label(self.root, text="Select File:").pack(pady=5)
+        self.entry_file_path = tk.Entry(self.root, width=40)
+        self.entry_file_path.pack(pady=5)
+        tk.Button(self.root, text="Browse", command=self.browse_file).pack(pady=5)
 
-# User registration
-def register_user():
-    username = entry_username.get()
-    dob = entry_dob.get()
+        tk.Label(self.root, text="Upload Date:").pack(pady=5)
+        self.entry_upload_date = tk.Entry(self.root)
+        self.entry_upload_date.pack(pady=5)
+        self.entry_upload_date.insert(0, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-    if not username or not dob:
-        messagebox.showerror("Input Error", "Please enter both Username and Date of Birth.")
-        return
+        tk.Button(self.root, text="Upload File", command=self.upload_file_with_details).pack(pady=20)
+        tk.Button(self.root, text="Logout", command=self.show_login_form).pack(pady=20)
 
-    patient_id = generate_patient_id(username, dob)
+    def upload_file_with_details(self):
+        file_path = self.entry_file_path.get()
+        upload_date = self.entry_upload_date.get()
 
-    if get_patient(username, dob):
-        messagebox.showerror("Registration Error", "User already registered.")
-        return
+        if not file_path or not upload_date:
+            messagebox.showerror("Input Error", "Please provide all details before uploading.")
+            return
 
-    insert_patient(username, dob, patient_id)
-    messagebox.showinfo("Registration Success", f"Registration successful!\nYour Patient ID: {patient_id}")
-    clear_registration_form()
+        patient_id = self.get_patient(self.logged_in_username, self.logged_in_dob)
+        document_name = os.path.basename(file_path)
 
-# User login
-def login_user():
-    username = login_entry_username.get()
-    dob = login_entry_dob.get()
+        try:
+            file_id = self.upload_to_drive(file_path, upload_date)
+            self.insert_document(patient_id, document_name, file_path, upload_date)
+            messagebox.showinfo("Success", f"File uploaded successfully.\nFile ID: {file_id}\nUpload Date: {upload_date}")
+        except Exception as e:
+            messagebox.showerror("Upload Error", f"An error occurred while uploading the file:\n{e}")
 
-    patient_id = get_patient(username, dob)
+    def browse_file(self):
+        file_path = filedialog.askopenfilename()
+        if file_path:
+            self.entry_file_path.delete(0, tk.END)
+            self.entry_file_path.insert(0, file_path)
 
-    if patient_id:
-        messagebox.showinfo("Login Success", f"Welcome back, {username}!\nYour Patient ID: {patient_id}")
-        show_file_upload_form()
-    else:
-        messagebox.showerror("Login Error", "Invalid Username or Date of Birth.")
+    
+    def clear_widgets(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
 
-# File upload
-def upload_file_with_details():
-    file_path = entry_file_path.get()
-    upload_date = entry_upload_date.get()
-    username = login_entry_username.get()
-    dob = login_entry_dob.get()
+    
+    def clear_registration_form(self):
+        self.entry_username.delete(0, tk.END)
+        self.entry_dob.delete(0, tk.END)
 
-    patient_id = get_patient(username, dob)
-    document_name = os.path.basename(file_path)
+    def generate_patient_id(self, username, dob):
+        combined = f"{username}_{dob}"
+        return hashlib.sha256(combined.encode()).hexdigest()[:10]
 
-    if not file_path or not upload_date:
-        messagebox.showerror("Input Error", "Please provide all details before uploading.")
-        return
+    def create_db_connection(self):
+        return mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="Hamrith@13",
+            database="hospital_db"
+        )
 
-    try:
-        file_id = upload_to_drive(file_path, upload_date)
-        insert_document(patient_id, document_name, file_path, upload_date)
-        messagebox.showinfo("Success", f"File uploaded successfully.\nFile ID: {file_id}\nUpload Date: {upload_date}")
-    except Exception as e:
-        messagebox.showerror("Upload Error", f"An error occurred while uploading the file:\n{e}")
+    def insert_patient(self, username, dob, patient_id):
+        conn = self.create_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO patients (patient_id, username, dob) VALUES (%s, %s, %s)",
+            (patient_id, username, dob)
+        )
+        conn.commit()
+        conn.close()
 
-# UI: Registration form
-def show_registration_form():
-    clear_widgets()
+    def get_patient(self, username, dob):
+        conn = self.create_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT patient_id FROM patients WHERE username = %s AND dob = %s",
+            (username, dob)
+        )
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None
 
-    tk.Label(root, text="Username:").pack(pady=5)
-    global entry_username
-    entry_username = tk.Entry(root)
-    entry_username.pack(pady=5)
+    def insert_document(self, patient_id, document_name, file_path, upload_date):
+        conn = self.create_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO documents (patient_id, document_name, file_path, upload_date) VALUES (%s, %s, %s, %s)",
+            (patient_id, document_name, file_path, upload_date)
+        )
+        conn.commit()
+        conn.close()
 
-    tk.Label(root, text="Date of Birth (YYYY-MM-DD):").pack(pady=5)
-    global entry_dob
-    entry_dob = tk.Entry(root)
-    entry_dob.pack(pady=5)
+    def get_credentials(self):
+        creds = None
+        if os.path.exists('token.json'):
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+                with open('token.json', 'w') as token:
+                    token.write(creds.to_json())
+        return creds
 
-    tk.Button(root, text="Register", command=register_user).pack(pady=20)
-    tk.Button(root, text="Go to Login", command=show_login_form).pack()
+    def upload_to_drive(self, file_path, upload_date):
+        creds = self.get_credentials()
+        service = build('drive', 'v3', credentials=creds)
 
-def clear_registration_form():
-    entry_username.delete(0, tk.END)
-    entry_dob.delete(0, tk.END)
+        file_metadata = {
+            'name': os.path.basename(file_path),
+            'description': f'Uploaded on {upload_date}'
+        }
+        media = MediaFileUpload(file_path)
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        return file.get('id')
 
-# UI: Login form
-def show_login_form():
-    clear_widgets()
 
-    tk.Label(root, text="Username:").pack(pady=5)
-    global login_entry_username
-    login_entry_username = tk.Entry(root)
-    login_entry_username.pack(pady=5)
-
-    tk.Label(root, text="Date of Birth (YYYY-MM-DD):").pack(pady=5)
-    global login_entry_dob
-    login_entry_dob = tk.Entry(root)
-    login_entry_dob.pack(pady=5)
-
-    tk.Button(root, text="Login", command=login_user).pack(pady=20)
-    tk.Button(root, text="Go to Registration", command=show_registration_form).pack()
-
-# UI: File upload form
-def show_file_upload_form():
-    clear_widgets()
-
-    tk.Label(root, text="File Upload:").pack(pady=20)
-
-    tk.Label(root, text="Select File:").pack(pady=5)
-    global entry_file_path
-    entry_file_path = tk.Entry(root, width=40)
-    entry_file_path.pack(pady=5)
-    tk.Button(root, text="Browse", command=browse_file).pack(pady=5)
-
-    tk.Label(root, text="Upload Date:").pack(pady=5)
-    global entry_upload_date
-    entry_upload_date = tk.Entry(root)
-    entry_upload_date.pack(pady=5)
-    entry_upload_date.insert(0, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-    tk.Button(root, text="Upload File", command=upload_file_with_details).pack(pady=20)
-    tk.Button(root, text="Logout", command=show_login_form).pack(pady=20)
-
-def browse_file():
-    file_path = filedialog.askopenfilename()
-    if file_path:
-        entry_file_path.delete(0, tk.END)
-        entry_file_path.insert(0, file_path)
-
-def clear_widgets():
-    for widget in root.winfo_children():
-        widget.destroy()
-
-# Initialize the main window
 root = tk.Tk()
-root.title("Patient Registration System")
-
-show_registration_form()
-
+app = PatientApp(root)
 root.mainloop()
